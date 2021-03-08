@@ -1,5 +1,6 @@
 #include <iostream>
 #include <cmath>
+#include <vector>
 using namespace std;
 
 #define F77NAME(x) x##_
@@ -62,7 +63,7 @@ private:
     double m = 1.0;             // mass
     double domain[2] = {0, 1};  // domain
     int N;                      // No. of particles
-    double dt = 1E-4;           // time step       
+    double dt = 1E-3;           // time step       
 
     double ** x;                // cordinate of particles
     double ** v;                // velocity of particles
@@ -115,6 +116,7 @@ public:
 // constructor
 SPH_serial::SPH_serial(int N){
     // N particles, initialise all parameters based on number of particles
+    this->N = N;
     x = new double * [N];
     r = new double * [N * N];
     q = new double [N * N];
@@ -206,11 +208,9 @@ SPH_serial::~SPH_serial(){
 // input location
 void SPH_serial::inputLocation(double * loc){
     // read locations from array loc(col major)
-    for(int i = 0; i < N; i++){
+    for(int i = 0; i < N; i++){      
         x[i][0] = loc[2*i];
-        x[i][1] = loc[2*i + 1];
-        cout << x[i][0] << endl;
-        cout << x[i][0] << endl;
+        x[i][1] = loc[2*i + 1];       
     }
 }
 
@@ -220,23 +220,23 @@ void SPH_serial::calRho(){
     // fill r matrix
     for(int i = 0; i < N; i++){
         for (int j = 0; j < N; j++){
-            double * temp = x[j];
-            F77NAME(daxpy) (2, -1.0, x[i], 1, temp, 1);
-            F77NAME(dcopy) (2, temp, 1, r[i*N + j], 1);
+            F77NAME(dcopy)(2, x[j], 1, r[i*N + j], 1);
+            F77NAME(daxpy) (2, -1.0, x[i], 1, r[i*N + j], 1);
         }
     }
 
     // calculate Norm to fill q matrix
     for(int i = 0; i < N; i++){
-        for (int j = i; j < N; j++){
-            q[i*N + j] = F77NAME(dnrm2)(2, r[i*N + j], 1);
+        for (int j = 0; j < N; j++){
+            q[i*N + j] = F77NAME(dnrm2)(2, r[i*N + j], 1)/h;
         }
     }
 
-
+    // printMatrix(q, N);
+    // cout << "q matrix" << endl;
     // fill phi_d matrix
     for(int i = 0; i < N; i++){
-        for (int j = i; j < N; j++){
+        for (int j = 0; j < N; j++){
             if (q[i*N + j] < 1){
                 phi_d[i*N + j] = pow(1.0 - pow(q[i*N + j],2), 3.0) * 4/(M_PI * h * h) ;
             }else{
@@ -250,11 +250,10 @@ void SPH_serial::calRho(){
     fill(temp, temp + N, 1.0);
     F77NAME(dsymv)('L', N, m, phi_d, N, temp, 1, 0.0, rho_i, 1);
     delete [] temp;
-    for(int i=0; i < N; i++){
-        cout << "..." << endl;
-        cout<<rho_i[i]<<endl;
-        cout << "........." << endl;
-    }
+    // for(int i=0; i<N; i++){
+    //     cout<< rho_i[i] <<endl;
+    //     cout << "Density calculated" << endl;
+    // }
 
 }
 
@@ -265,10 +264,10 @@ void SPH_serial::scaleRecal(){
     fill(temp, temp + N, 1.0);
     F77NAME(dsymv)('L', N, m, phi_d, N, temp, 1, 0.0, rho_i, 1);
     delete [] temp;
-    for(int i=0; i<N; i++){
-        cout<<rho_i[i]<<endl;
-        cout << "........." << endl;
-    }
+    // for(int i=0; i<N; i++){
+    //     cout<< rho_i[i] <<endl;
+    //     cout << "Density calculated" << endl;
+    // }
 
 }
 
@@ -277,18 +276,24 @@ void SPH_serial::calPre(){
     // calculate p
     fill(p, p + N, -k * rho_0);
     F77NAME(daxpy)(N, k, rho_i, 1, p, 1);
+
     // calculate phi_p
     for (int i = 0; i<N; i++){
         for(int j = 0; j<N; j++){
-            F77NAME(dcopy)(2, r[i*N +j], 1, phi_p[i*N+j], 1);
+            F77NAME(dcopy)(2, r[i*N +j], 1, phi_p[i*N+j], 1); // phi_p[i*N + j] = r[i*N +j]
             double scal_fac = 0.0;
             if (q[i*N + j] < 1 && i != j){
-                scal_fac = -30 / M_PI / pow(h,3.0);
-                scal_fac *= pow((1-q[i*N + j]),2)/q[i*N + j];
+                scal_fac = -30 / M_PI / pow(h,3.0); 
+                scal_fac *= pow((1-q[i*N + j]),2)/q[i*N + j]; // scal_fac = -30/(pi*h^3) * (1-q)^2/q
             }
             F77NAME(dscal)(N, scal_fac, phi_p[i*N + j], 1);
+            // cout << phi_p[i*N + j][0] << " ";
+            // cout << phi_p[i*N + j][1] << endl;
         }
     }
+    // cout << "phi_p calculated" << endl;
+
+
     // calculate F_p
     for (int i=0; i<N; i++){
         F_p[i][0] = 0;
@@ -296,30 +301,154 @@ void SPH_serial::calPre(){
 
         for (int j = 0; j<N; j++){
             double scale_fac = -(m/rho_i[j]) * (p[i] + p[j])/2; 
-            F77NAME(dscal)(N, scale_fac, phi_p[i*N + j], 1);
-            F77NAME(daxpy)(N, 1.0, phi_p[i*N + j], 1, F_p[i], 1);
+            F77NAME(dscal)(N, scale_fac, phi_p[j*N + i], 1);
+            F77NAME(daxpy)(N, 1.0, phi_p[j*N + i], 1, F_p[i], 1);
         }
-        cout << F_p[i][0] << endl;
-        cout << F_p[i][1] << endl;
-        cout << "......." << endl;
+        // cout << F_p[i][0] << endl;
+        // cout << F_p[i][1] << endl;
+        // cout << "pressure force calculated" << endl;
     }
 }
 
 // calculate Viscous Force
+void SPH_serial::calVis(){
+
+    // calculate Vij
+    double ** vij = new double * [N * N];
+    for(int i = 0; i < N; i++){
+        for (int j = 0; j < N; j++){
+            vij[i*N + j] = new double[2];
+            F77NAME(dcopy)(2, v[j], 1, vij[i*N + j], 1);
+            F77NAME(daxpy) (2, -1.0, v[i], 1, vij[i*N + j], 1);
+        }
+    }
+
+    // calculate phi_v
+    for(int i = 0; i < N; i ++){
+        for(int j = 0; j < N; j++ ){
+            if (q[i*N + j] < 1 && i !=j ){
+                phi_v[i*N + j] = (1 - q[i*N + j]) * 40/M_PI/pow(h, 4);
+            }else{
+                phi_v[i*N + j] = 0;
+            }
+        }
+    }
 
 
+    //calculate F_v
+    for (int i=0; i<N; i++){
+        F_v[i][0] = 0;
+        F_v[i][1] = 0;
+
+        for (int j = 0; j<N; j++){
+            double scale_fac = -miu * (m/rho_i[j]) * phi_v[i*N + j]; 
+            F77NAME(dscal)(N, scale_fac, vij[j*N + i], 1);
+            F77NAME(daxpy)(N, 1.0, vij[j*N + i], 1, F_v[i], 1);
+        }
+        // cout << F_v[i][0] << endl;
+        // cout << F_v[i][1] << endl;
+        // cout << "viscous force calaulated" << endl;
+    }
+
+    for (int i=0; i< N*N; i++){
+        delete [] vij[i];
+        
+    }
+    delete [] vij;
+
+}
 
 
+// calculated gravity force
+void SPH_serial::calGra(){
+    for (int i=0; i<N; i++){
+        F_g[i][0] = 0;
+        F_g[i][1] = -rho_i[i] * g;
 
+    }
+
+}
+
+// time integration
+void SPH_serial::timeInte(){
+    int t = 0;
+    while(t < 1000000){
+        calRho();
+        if(t == 0){
+            scaleRecal();
+        
+        }
+        calPre();
+        calVis();
+        calGra();
+
+        // calculate a
+        for(int i=0; i< N; i++){
+            F77NAME(dcopy)(2, F_p[i], 1, a[i], 1);
+            F77NAME(daxpy)(2, 1.0, F_v[i], 1, a[i], 1);
+            F77NAME(daxpy)(2, 1.0, F_g[i], 1, a[i], 1);
+            F77NAME(dscal)(2, 1/rho_i[i], a[i], 1);
+        }
+
+        // time integration step
+        if (t == 0){
+            for(int i=0; i<N; i++){
+                F77NAME(daxpy)(2, dt/2, a[i], 1, v[i], 1);
+                F77NAME(daxpy)(2, dt, v[i], 1, x[i], 1);
+            }
+        }else{
+            for(int i=0; i<N; i++){
+                F77NAME(daxpy)(2, dt, a[i], 1, v[i], 1);
+                F77NAME(daxpy)(2, dt, v[i], 1, x[i], 1);
+            }
+        }
+
+        // check for BC
+        for (int i=0; i<N; i++){
+            if (x[i][0] < domain[0] + h){
+                v[i][0] = -e*v[i][0];
+                x[i][0] = domain[0] + h;
+            }else if(x[i][0] > domain[1] - h){
+                v[i][0] = -e*v[i][0];
+                x[i][0] = domain[1] - h;
+            }
+            if (x[i][1] < domain[0] + h){
+                v[i][1] = -e*v[i][1];
+                x[i][1] = domain[0] + h;
+            }else if(x[i][1] > domain[1] - h){
+                v[i][1] = -e*v[i][1];
+                x[i][1] = domain[1] - h;
+            }
+        }
+
+        // print result
+        for (int i=0; i<N; i++){
+            cout << "ax ay of particle: " << i+1 << endl;
+            cout << a[i][0] << " " << a[i][1] << endl;
+            cout << "vx vy xx xy of particle: " << i+1 << endl;
+            cout << v[i][0] << " " << v[i][1] << " ";
+            cout << x[i][0] << " " << x[i][1] << endl;
+        }
+        cout << "end of time step: " << t << endl;
+        cout << endl;
+
+        t ++;
+
+    }
+
+}
 
 
 int main(int argc, char const *argv[])
 {
-    SPH_serial test = SPH_serial(1);
-    double loc[2] = {0.5, 0.5};
+    SPH_serial test = SPH_serial(3);
+    double loc[6] = {0.5, 0.5, 0.495, 0.01, 0.505, 0.01};
     test.inputLocation(loc);
-    test.calRho();
-    test.scaleRecal();
-    test.calPre();
+    // test.calRho();
+    // test.scaleRecal();
+    // test.calPre();
+    // test.calVis();
+    // test.calGra();
+    test.timeInte();
     return 0;
 }
