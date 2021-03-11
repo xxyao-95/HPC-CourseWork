@@ -1,6 +1,10 @@
 #include <iostream>
 #include <cmath>
 #include <vector>
+#include <fstream>
+#include <iomanip>
+#include <cstdlib>
+
 using namespace std;
 
 #define F77NAME(x) x##_
@@ -63,7 +67,7 @@ private:
     double m = 1.0;             // mass
     double domain[2] = {0, 1};  // domain
     int N;                      // No. of particles
-    double dt = 1E-3;           // time step       
+    double dt = 1E-4;           // time step       
 
     double ** x;                // cordinate of particles
     double ** v;                // velocity of particles
@@ -217,18 +221,18 @@ void SPH_serial::inputLocation(double * loc){
 // calculate density for each particle
 void SPH_serial::calRho(){
 
-    // fill r matrix
-    for(int i = 0; i < N; i++){
-        for (int j = 0; j < N; j++){
-            F77NAME(dcopy)(2, x[j], 1, r[i*N + j], 1);
-            F77NAME(daxpy) (2, -1.0, x[i], 1, r[i*N + j], 1);
+    // fill r matrix, r is N*N matrix of [delta_x, delta_y]
+    for(int i = 0; i < N; i++){ // col 
+        for (int j = 0; j < N; j++){ // row
+            F77NAME(dcopy)(2, x[j], 1, r[i*N + j], 1); // r = xj
+            F77NAME(daxpy) (2, -1.0, x[i], 1, r[i*N + j], 1); // r = xj - xi
         }
     }
 
     // calculate Norm to fill q matrix
     for(int i = 0; i < N; i++){
         for (int j = 0; j < N; j++){
-            q[i*N + j] = F77NAME(dnrm2)(2, r[i*N + j], 1)/h;
+            q[i*N + j] = F77NAME(dnrm2)(2, r[i*N + j], 1)/h; // q = norm2(r)/h
         }
     }
 
@@ -238,7 +242,7 @@ void SPH_serial::calRho(){
     for(int i = 0; i < N; i++){
         for (int j = 0; j < N; j++){
             if (q[i*N + j] < 1){
-                phi_d[i*N + j] = pow(1.0 - pow(q[i*N + j],2), 3.0) * 4/(M_PI * h * h) ;
+                phi_d[i*N + j] = pow(1.0 - pow(q[i*N + j],2), 3.0) * 4/(M_PI * h * h) ; // phi_d = 4/(pi*h^2) * (1-q^2)^3
             }else{
                 phi_d[i*N + j] = 0;
             }
@@ -246,9 +250,9 @@ void SPH_serial::calRho(){
     }
 
     // calculate rho
-    double * temp = new double[N];
-    fill(temp, temp + N, 1.0);
-    F77NAME(dsymv)('L', N, m, phi_d, N, temp, 1, 0.0, rho_i, 1);
+    double * temp = new double[N]; 
+    fill(temp, temp + N, 1.0); // temp = [1,1,...1]
+    F77NAME(dsymv)('L', N, m, phi_d, N, temp, 1, 0.0, rho_i, 1); // m * phi_d * temp
     delete [] temp;
     // for(int i=0; i<N; i++){
     //     cout<< rho_i[i] <<endl;
@@ -286,7 +290,7 @@ void SPH_serial::calPre(){
                 scal_fac = -30 / M_PI / pow(h,3.0); 
                 scal_fac *= pow((1-q[i*N + j]),2)/q[i*N + j]; // scal_fac = -30/(pi*h^3) * (1-q)^2/q
             }
-            F77NAME(dscal)(N, scal_fac, phi_p[i*N + j], 1);
+            F77NAME(dscal)(2, scal_fac, phi_p[i*N + j], 1);
             // cout << phi_p[i*N + j][0] << " ";
             // cout << phi_p[i*N + j][1] << endl;
         }
@@ -301,12 +305,12 @@ void SPH_serial::calPre(){
 
         for (int j = 0; j<N; j++){
             double scale_fac = -(m/rho_i[j]) * (p[i] + p[j])/2; 
-            F77NAME(dscal)(N, scale_fac, phi_p[j*N + i], 1);
-            F77NAME(daxpy)(N, 1.0, phi_p[j*N + i], 1, F_p[i], 1);
+            F77NAME(dscal)(2, scale_fac, phi_p[j*N + i], 1);
+            F77NAME(daxpy)(2, 1.0, phi_p[j*N + i], 1, F_p[i], 1);
         }
-        // cout << F_p[i][0] << endl;
-        // cout << F_p[i][1] << endl;
-        // cout << "pressure force calculated" << endl;
+        cout << F_p[i][0] << endl;
+        cout << F_p[i][1] << endl;
+        cout << "pressure force calculated" << endl;
     }
 }
 
@@ -342,8 +346,8 @@ void SPH_serial::calVis(){
 
         for (int j = 0; j<N; j++){
             double scale_fac = -miu * (m/rho_i[j]) * phi_v[i*N + j]; 
-            F77NAME(dscal)(N, scale_fac, vij[j*N + i], 1);
-            F77NAME(daxpy)(N, 1.0, vij[j*N + i], 1, F_v[i], 1);
+            F77NAME(dscal)(2, scale_fac, vij[j*N + i], 1);
+            F77NAME(daxpy)(2, 1.0, vij[j*N + i], 1, F_v[i], 1);
         }
         // cout << F_v[i][0] << endl;
         // cout << F_v[i][1] << endl;
@@ -372,7 +376,19 @@ void SPH_serial::calGra(){
 // time integration
 void SPH_serial::timeInte(){
     int t = 0;
-    while(t < 1000000){
+    ofstream Fout;
+    Fout.open("output_4_noise.txt");
+    for (int i=0; i<N; i++){ 
+            Fout << setw(12) << "a" << i+1 << "_x";
+            Fout << setw(12) << "a" << i+1 << "_y";
+            Fout << setw(12) << "v" << i+1 << "_x";
+            Fout << setw(12) << "v" << i+1 << "_y";
+            Fout << setw(12) << "x" << i+1 << "_x";
+            Fout << setw(12) << "x" << i+1 << "_y";
+    }
+    Fout << endl;
+
+    while(t < 200000){
         calRho();
         if(t == 0){
             scaleRecal();
@@ -381,6 +397,7 @@ void SPH_serial::timeInte(){
         calPre();
         calVis();
         calGra();
+
 
         // calculate a
         for(int i=0; i< N; i++){
@@ -432,6 +449,16 @@ void SPH_serial::timeInte(){
         cout << "end of time step: " << t << endl;
         cout << endl;
 
+        for (int i=0; i<N; i++){ 
+            Fout << setw(15) << a[i][0];
+            Fout << setw(15) << a[i][1];
+            Fout << setw(15) << v[i][0];
+            Fout << setw(15) << v[i][1];
+            Fout << setw(15) << x[i][0];
+            Fout << setw(15) << x[i][1];
+        }
+        Fout << endl;
+
         t ++;
 
     }
@@ -441,8 +468,21 @@ void SPH_serial::timeInte(){
 
 int main(int argc, char const *argv[])
 {
-    SPH_serial test = SPH_serial(3);
-    double loc[6] = {0.5, 0.5, 0.495, 0.01, 0.505, 0.01};
+    SPH_serial test = SPH_serial(4);
+    double loc[8] = {0.505, 0.5, 0.515, 0.5, 0.51, 0.45, 0.5, 0.45};
+
+    // noise generation
+    srand(time(0));
+    for (int i=0; i<4 ; i++){
+        double noise = (double) rand()/(RAND_MAX/2) - 1; // noise is in -1 to 1
+        noise *= 0.01 / 10; // noise is scaled to -h/10 to h/10
+        loc[i*2] += noise;
+    }
+
+    // for (int i=0; i<4; i++){
+    //     // cout.precision(8); 
+    //     cout << loc[i] << endl;
+    // }
     test.inputLocation(loc);
     // test.calRho();
     // test.scaleRecal();
