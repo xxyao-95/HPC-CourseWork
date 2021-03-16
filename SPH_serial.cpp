@@ -308,9 +308,9 @@ void SPH_serial::calPre(){
             F77NAME(dscal)(2, scale_fac, phi_p[j*N + i], 1);
             F77NAME(daxpy)(2, 1.0, phi_p[j*N + i], 1, F_p[i], 1);
         }
-        cout << F_p[i][0] << endl;
-        cout << F_p[i][1] << endl;
-        cout << "pressure force calculated" << endl;
+//        cout << F_p[i][0] << endl;
+//        cout << F_p[i][1] << endl;
+//        cout << "pressure force calculated" << endl;
     }
 }
 
@@ -375,7 +375,7 @@ void SPH_serial::calGra(){
 
 // time integration
 void SPH_serial::timeInte(){
-    int t = 0;
+    int t = 1;
     ofstream Fout;
     Fout.open("output_4_noise.txt");
     for (int i=0; i<N; i++){ 
@@ -387,10 +387,20 @@ void SPH_serial::timeInte(){
             Fout << setw(12) << "x" << i+1 << "_y";
     }
     Fout << endl;
+    
+    for (int i=0; i<N; i++){ 
+            Fout << setw(15) << a[i][0];
+            Fout << setw(15) << a[i][1];
+            Fout << setw(15) << v[i][0];
+            Fout << setw(15) << v[i][1];
+            Fout << setw(15) << x[i][0];
+            Fout << setw(15) << x[i][1];
+    }
+    Fout << endl;
 
-    while(t < 200000){
+    while(t <= 200000){
         calRho();
-        if(t == 0){
+        if(t == 1){
             scaleRecal();
         
         }
@@ -408,7 +418,7 @@ void SPH_serial::timeInte(){
         }
 
         // time integration step
-        if (t == 0){
+        if (t == 1){
             for(int i=0; i<N; i++){
                 F77NAME(daxpy)(2, dt/2, a[i], 1, v[i], 1);
                 F77NAME(daxpy)(2, dt, v[i], 1, x[i], 1);
@@ -438,26 +448,29 @@ void SPH_serial::timeInte(){
             }
         }
 
-        // print result
-        for (int i=0; i<N; i++){
-            cout << "ax ay of particle: " << i+1 << endl;
-            cout << a[i][0] << " " << a[i][1] << endl;
-            cout << "vx vy xx xy of particle: " << i+1 << endl;
-            cout << v[i][0] << " " << v[i][1] << " ";
-            cout << x[i][0] << " " << x[i][1] << endl;
+//        // print result
+//        for (int i=0; i<N; i++){
+//            cout << "ax ay of particle: " << i+1 << endl;
+//            cout << a[i][0] << " " << a[i][1] << endl;
+//            cout << "vx vy xx xy of particle: " << i+1 << endl;
+//            cout << v[i][0] << " " << v[i][1] << " ";
+//            cout << x[i][0] << " " << x[i][1] << endl;
+//        }
+//        cout << "end of time step: " << t << endl;
+//        cout << endl;
+        if (t % 100 == 0){
+            for (int i=0; i<N; i++){ 
+                Fout << setw(15) << a[i][0];
+                Fout << setw(15) << a[i][1];
+                Fout << setw(15) << v[i][0];
+                Fout << setw(15) << v[i][1];
+                Fout << setw(15) << x[i][0];
+                Fout << setw(15) << x[i][1];
+            }
+            Fout << endl;
+        
+            
         }
-        cout << "end of time step: " << t << endl;
-        cout << endl;
-
-        for (int i=0; i<N; i++){ 
-            Fout << setw(15) << a[i][0];
-            Fout << setw(15) << a[i][1];
-            Fout << setw(15) << v[i][0];
-            Fout << setw(15) << v[i][1];
-            Fout << setw(15) << x[i][0];
-            Fout << setw(15) << x[i][1];
-        }
-        Fout << endl;
 
         t ++;
 
