@@ -503,5 +503,6 @@ int main(int argc, char const *argv[])
     // test.calVis();
     // test.calGra();
     test.timeInte();
+    cout << "finished" << endl;
     return 0;
 }
