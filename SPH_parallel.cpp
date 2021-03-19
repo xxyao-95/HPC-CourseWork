@@ -139,7 +139,8 @@ void SPH_parallel::inputLocation(double * loc){
 
 // calculate rho
 void SPH_parallel::calRho(double * loc){
-    double * ptr = phi_d + rank * N_proc;
+    // assgin phi_d values at postitions where rij = [0, 0];
+    double * ptr = phi_d + rank * N_proc * 2;
     for(int i=0; i< N_proc; i++){
         *ptr = 4 / M_PI / h / h;
         ptr +=  N_proc + 1;
@@ -151,8 +152,7 @@ void SPH_parallel::calRho(double * loc){
     F77NAME(dgemv)('N', N_proc, N, m, phi_d, N_proc, temp, 1, 0.0, rho, 1); // m * phi_d * temp
     delete [] temp;
 
-    // for(int i=0; i< N_proc; i++){
-    //    cout << rho[i] << " " << rank <<endl;
-    // }
-
+}
+void SPH_parallel::scaleRecal(){
+    
 }
