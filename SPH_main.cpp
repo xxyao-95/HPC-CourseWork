@@ -46,22 +46,20 @@ int main(int argc, char *argv[])
     // now start the algorithm at the 1st time step
     // need to calculate rij to determine q which decide whether the particles are colliding
     // let root calculalte rij
-    if (rank == 0){
-        double * r;
-        r = FindPair_brute(loc, N);
-        cout << r[2] << endl;
-        cout << r[3] << endl;
-    }
+    // if (rank == 0){
+    //     double * r;
+    //     r = FindPair_brute(loc, N);
+    //     cout << r[2] << endl;
+    //     cout << r[3] << endl;
+    // }
 
-    test1.calRho(loc);
+    // test1.calRho();
   
-    
-
-    
-        
-  
-
-    
+    // test1.scaleRecal();
+    // test1.calPre();
+    // test1.calVis();
+    // test1.calGra();
+    test1.timeInte();
     // Finailze MPI
     MPI_Finalize();
     return 0;

@@ -35,14 +35,19 @@ private:
     double * r;                // distance of particles
     double * q;                // norm of r_ijs
     double * p;                // presure of paritcles
-    double * Fp;              // Presure Force
-    double * Fv;              // Viscous Force
-    double * Fg;              // Gravity Force
+    double * Fp;               // Presure Force
+    double * Fv;               // Viscous Force
+    double * Fg;               // Gravity Force
     double * rho;              // Density of particle
     double * phi_d;            // phi_d for calculating density
     double * phi_p;            // \nabla phi_p for calculating pressure
     double * phi_v;            // \nabla^2 phi_v for calculating velocity
     double * a;                // acceleration
+    double * rho_global;       // rho of all processes
+    double * p_global;         // p of all processes
+    double * x_global;         // x of all processes
+
+    vector<int> coordQ;         // coordinate of q that is < 1
 
 public:
     // constructor
@@ -52,7 +57,7 @@ public:
     // input location
     void inputLocation(double * loc);
     // rho calculation
-    void calRho(double * loc);
+    void calRho();
     // Pressure Force Calculation
     void calPre();
     // Viscous Force Calculation
@@ -65,6 +70,10 @@ public:
     void writeResult();
     // scale m and recalculate rho
     void scaleRecal();
+    // send/gather locations of all particle
+    void sendRecvLoc();
+    // calculate rij and q
+    void calRijQ();
     // print matrix
     void printMatrix(double * Matrix, int m, int n){
         for(int i = 0; i < n; i++){

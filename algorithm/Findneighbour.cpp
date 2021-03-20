@@ -5,12 +5,4 @@ Using divide and conquer algorithm
 
 #include <iostream>
 #include <vector>
-
-
-struct particle{
-    double x = 0.0;
-    double y = 0.0;
-};
-
-
-
+#include <map>
