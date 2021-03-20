@@ -243,7 +243,7 @@ void SPH_parallel::calGra(){
 
 void SPH_parallel::timeInte(){
     int t = 1;
-    while(t <= 4){
+    while(t <= 20){
         if(t > 1){
             calRijQ();
         }
@@ -328,9 +328,10 @@ void SPH_parallel::calRijQ(){
             if (q[i*N_proc + j] < 1){
                 coordQ.push_back(i*N_proc + j);
             }
-            xgptr += 2;
             ptr += 2;
-        }      
+        }
+        xgptr += 2;      
     }
+
 
 }
