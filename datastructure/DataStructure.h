@@ -2,7 +2,7 @@
 Data structure to hold world information
 and information for receiving communications
 */
-
+# pragma once
 class DecomposeInfo{
 public:
     int N;                      // total number of particles

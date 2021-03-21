@@ -1,4 +1,5 @@
 #include "SPH_parallel.h"
+#include "cases/generate_cases.h"
 #include <cstdlib>
 #include "mpi.h"
 
@@ -19,14 +20,16 @@ int main(int argc, char *argv[])
     if (rank == 0){
         cout << "root will parse argument" << endl;
         cout << "root will read in loc input" << endl;
-        N = 4;
+        vector<double> locvec;
+        generate_droplet(N,locvec,0.01);
         if (size > N){
             throw runtime_error("More process than particle");
         }
-        loc = new double [N * 2];
-        double loc_data[8] = {0.505, 0.5, 0.515, 0.5, 0.51, 0.45, 0.5, 0.45};
-        for (int i=0; i<N*2; i++){
-            loc[i] = loc_data[i];
+
+        loc = new double[2*N];
+        for(int i=0; i<2*N; i++){
+            loc[i] = locvec[i];
+            // cout << locvec[i] << endl;
         }
         // noise generation
         // srand(time(0));
@@ -36,6 +39,7 @@ int main(int argc, char *argv[])
         //     loc[i*2] += noise;
         // }
     }
+    MPI_Barrier(MPI_COMM_WORLD);
     // broadcast no. of particles
     MPI_Bcast(&N, 1, MPI_INT, 0, MPI_COMM_WORLD);
     if (rank != 0){
@@ -49,9 +53,9 @@ int main(int argc, char *argv[])
     // input location for all processes
     SPH.inputLocation(loc);
 
-    // test1.calRho();
+    // SPH.calRho();
   
-    // test1.scaleRecal();
+    // SPH.scaleRecal();
     // test1.calPre();
     // test1.calVis();
     // test1.calGra();

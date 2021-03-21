@@ -1,6 +1,3 @@
-// #pragma once
-
-
 
 #include "SPH_parallel.h"
 #include <cmath>
@@ -148,6 +145,7 @@ void SPH_parallel::calRho(){
         }
     }
 
+    // calculate rho for all particles in the process
     double * temp = new double[N]; 
     fill(temp, temp + N, 1.0); // temp = [1,1,...1]
     F77NAME(dgemv)('N', N_proc, N, m, phi_d, N_proc, temp, 1, 0.0, rho, 1); // m * phi_d * temp
@@ -165,6 +163,7 @@ void SPH_parallel::scaleRecal(){
     double sum_rho = F77NAME(dasum)(N, rho_global, 1);
     m = N*rho_0 / sum_rho;
 
+    // scale m and rho
     F77NAME(dscal)(N, m, rho_global, 1);
     F77NAME(dscal)(N_proc, m, rho, 1);
 
@@ -176,6 +175,7 @@ void SPH_parallel::scaleRecal(){
 
 // Pressure Force Calculation
 void SPH_parallel::calPre(){
+    // make Fp and phi_p zero at begining
     fill(Fp, Fp + (N_proc * 2), 0.0);
     fill(phi_p, phi_p + (N*N_proc*2), 0.0);
     // calculate p
@@ -190,43 +190,44 @@ void SPH_parallel::calPre(){
         double * ptr_r = r + (2 * i); // pointer to r at the location of non-zero q
         double * ptr_phi_p = phi_p + (2 * i); // pointer to phi_p at the location of non-zero q
         double scal_fac = (-30/M_PI/pow(h,3)) * pow((1-q[i]),2)/q[i];
-        F77NAME(dcopy)(2, ptr_r, 1, ptr_phi_p, 1);
-        F77NAME(dscal)(2, scal_fac, ptr_phi_p, 1);
+        F77NAME(dcopy)(2, ptr_r, 1, ptr_phi_p, 1); // r -> phi_p
+        F77NAME(dscal)(2, scal_fac, ptr_phi_p, 1); // phi_p * scal_fac
     }
     // calculate F_p
     for (int i:coordQ){
-        int col = i / N_proc; // get col no. of the non-zero q
-        int row = i % N_proc; // get row no. of the non-zero q
-        double * ptr_phi_p = phi_p + (2 * i); // pointer that point to the phi_p calculated
-        double * ptr_Fp = Fp + (2*row); // pointer that point to the particle
-        double scal_fac =  -(m/rho_global[col]) * (p[row] + p_global[col])/2;
-        F77NAME(dscal)(2, scal_fac, ptr_phi_p, 1);
-        F77NAME(daxpy)(2, 1.0, ptr_phi_p, 1, ptr_Fp, 1);
+        int col = i / N_proc; // get col no. of the non-zero q, the location of p and rho that need to be included in the formula
+        int row = i % N_proc; // get row no. of the non-zero q, the particle that we want to calculate force
+        double * ptr_phi_p = phi_p + (2 * i); // pointer that points to the phi_p calculated
+        double * ptr_Fp = Fp + (2 * row); // pointer that points to the particle
+        double scal_fac =  -(m/rho_global[col]) * (p[row] + p_global[col])/2; // scale factor
+        F77NAME(dscal)(2, scal_fac, ptr_phi_p, 1); // phi_p * scal_fac
+        F77NAME(daxpy)(2, 1.0, ptr_phi_p, 1, ptr_Fp, 1); // Fp += phi_p*calfac
     }
 }
 
 // calculate Viscous Force
 void SPH_parallel::calVis(){
+    // make Fv and phi_v zero at the begining
     fill(Fv, Fv + (N_proc * 2), 0.0);
     fill(phi_v, phi_v + (N_proc * N), 0.0);
     // calculate phi_v at the required non-zero q location
     for (int i: coordQ){
-        phi_v[i] = (1-q[i]) * 40 / M_PI / pow(h, 4);
+        phi_v[i] = (1-q[i]) * 40 / M_PI / pow(h, 4); // calculate phi_v
     }
 
     // calculate F_v
     for (int i: coordQ){
-        int col = i / N_proc; // get col no. of the non-zero q
-        int row = i % N_proc; // get row no. of the non-zero q
+        int col = i / N_proc; // get col no. of the non-zero q, the location of p and rho that need to be included in the formula
+        int row = i % N_proc; // get row no. of the non-zero q, the particle that we want to calculate force
         double scale_fac = -miu * (m/rho_global[col]) * phi_v[i]; // calculate the scale factor -miu *m/rho_i
-        double *vij = new double[2];
-        double * ptr_v = v +(2 * row);
-        F77NAME(dcopy)(2, ptr_v, 1, vij, 1);
-        double * ptr_v_global = v_global + (2 * col);
-        F77NAME(daxpy) (2, -1.0, ptr_v_global, 1, vij, 1);
-        F77NAME(dscal)(2, scale_fac, vij, 1);
-        double * ptr_fv = Fv + (2 * row);
-        F77NAME(daxpy)(2, 1.0, vij, 1,  ptr_fv, 1);
+        double *vij = new double[2](); // create a vector that hold vij for that particular coodinate
+        double * ptr_v = v +(2 * row); // pointer that points to vi
+        F77NAME(dcopy)(2, ptr_v, 1, vij, 1); // vi -> vij
+        double * ptr_v_global = v_global + (2 * col); // pointer that points to vj
+        F77NAME(daxpy) (2, -1.0, ptr_v_global, 1, vij, 1); // vij - vj
+        F77NAME(dscal)(2, scale_fac, vij, 1); // vij * scalfactor
+        double * ptr_Fv = Fv + (2 * row); // point to the location of F_v that we want to calculate
+        F77NAME(daxpy)(2, 1.0, vij, 1,  ptr_Fv, 1); // Fv += vij * scal_pac
     }
     
 }
@@ -290,10 +291,12 @@ void SPH_parallel::timeInte(){
         //         cout << rho[i] << endl;
         //     }     
         // }
-
-        F77NAME(daxpy)(2 * N_proc, 1.0, Fp, 1, a, 1);
-        F77NAME(daxpy)(2 * N_proc, 1.0, Fv, 1, a, 1);
-        F77NAME(daxpy)(2 * N_proc, 1.0, Fg, 1, a, 1);
+        // fill(a, a + 2*N_proc, 0.0);
+        F77NAME(dcopy)(2 * N_proc, Fg, 1, a, 1);
+        if (!coordQ.empty()){
+            F77NAME(daxpy)(2 * N_proc, 1.0, Fv, 1, a, 1);
+            F77NAME(daxpy)(2 * N_proc, 1.0, Fp, 1, a, 1);
+        }
         double * ptr = a;
         for(int i = 0; i < N_proc; i++){
              F77NAME(dscal)(2, 1/rho[i], ptr, 1);
@@ -374,22 +377,24 @@ void SPH_parallel::sendRecvLoc(){
 
 
 void SPH_parallel::calRijQ(){
+    // need to clear the vector for positon of non-zero q at every time step
     coordQ.clear();
+    // use pointers to traverse r and x_global
     double * ptr = r;
     double * xgptr = x_global;
-    for(int i =0; i < N; i++){
-        F77NAME(dcopy)(N_proc * 2, x, 1, ptr, 1);
-        for (int j = 0; j < N_proc; j++){
-            F77NAME(daxpy)(2, -1.0, xgptr,1,ptr,1);
-            q[i*N_proc + j] = F77NAME(dnrm2)(2, ptr, 1) / h;
+    for(int i =0; i < N; i++){ // col of r
+        F77NAME(dcopy)(N_proc * 2, x, 1, ptr, 1); // x -> r
+        for (int j = 0; j < N_proc; j++){ // row of r
+            F77NAME(daxpy)(2, -1.0, xgptr,1,ptr,1); // r - x_global
+            q[i*N_proc + j] = F77NAME(dnrm2)(2, ptr, 1) / h; // find norm
             // use a vector to save of coordinate of q
-            if (q[i*N_proc + j] < 1 && q[i*N_proc + j]>0){
+            if (q[i*N_proc + j] < 1 && q[i*N_proc + j]>0){ // record position on non-zero q
                 // cout << "Hi " << rank << endl;
                 coordQ.push_back(i*N_proc + j);
             }
-            ptr += 2;
+            ptr += 2; // increment pointer by 2 to move to next point
         }
-        xgptr += 2;      
+        xgptr += 2; // increment pointer by 2 to move to next point     
     }
 
 }

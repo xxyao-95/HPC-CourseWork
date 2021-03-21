@@ -1,7 +1,7 @@
 /*
 first draft of parallel code
 */
-
+# pragma once
 #include <iostream>
 #include <algorithm>
 #include <vector>
