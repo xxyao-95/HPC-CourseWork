@@ -4,7 +4,6 @@ first draft of parallel code
 
 #include <iostream>
 #include <algorithm>
-#include <fstream>
 #include <vector>
 #include "datastructure/DataStructure.h"
 

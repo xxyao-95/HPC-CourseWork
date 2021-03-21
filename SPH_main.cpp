@@ -1,6 +1,7 @@
 #include "SPH_parallel.h"
-// #include "datastructure/DataStructure.h"
+#include <cstdlib>
 #include "mpi.h"
+
 using namespace std;
 
 int main(int argc, char *argv[])
@@ -18,14 +19,22 @@ int main(int argc, char *argv[])
     if (rank == 0){
         cout << "root will parse argument" << endl;
         cout << "root will read in loc input" << endl;
-        N = 7;
-        loc = new double [N * 2];
-        double testnum = 0.7;
-        for (int i = 0; i < N; i++){
-            loc[2*i] = testnum;
-            loc[2*i + 1] = testnum;
-            testnum -= 0.1;
+        N = 4;
+        if (size > N){
+            throw runtime_error("More process than particle");
         }
+        loc = new double [N * 2];
+        double loc_data[8] = {0.505, 0.5, 0.515, 0.5, 0.51, 0.45, 0.5, 0.45};
+        for (int i=0; i<N*2; i++){
+            loc[i] = loc_data[i];
+        }
+        // noise generation
+        // srand(time(0));
+        // for (int i=0; i<4 ; i++){
+        //     double noise = (double) rand()/(RAND_MAX/2) - 1; // noise is in -1 to 1
+        //     noise *= 0.01 / 10; // noise is scaled to -h/10 to h/10
+        //     loc[i*2] += noise;
+        // }
     }
     // broadcast no. of particles
     MPI_Bcast(&N, 1, MPI_INT, 0, MPI_COMM_WORLD);
