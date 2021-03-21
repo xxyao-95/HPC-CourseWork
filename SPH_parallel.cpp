@@ -5,6 +5,7 @@
 #include "SPH_parallel.h"
 #include <cmath>
 #include "mpi.h"
+
 #define F77NAME(x) x##_
 
 extern "C"{
@@ -61,40 +62,16 @@ extern "C"{
 
 }
 
-double * FindPair_brute(double * x, int N){
-    double * r = new double [2 * N * N];
-    for(int i = 0; i < N; i++){ // col
-        for (int j = 0; j < N; j++){ // row
-            F77NAME(dcopy)(2, x+ 2*j, 1, r + 2*(i*N +j) , 1);
-            F77NAME(daxpy)(2 , -1.0, x+ 2*i, 1, r + 2*(i*N +j), 1);
-        }
-    }
-    return r;
-}
-
-
-void decompose_particles(int N, int rank, int size, double * loc, 
-                         int & N_proc, double ** substart){
-    // if there are more process than particles, do not care about this for now
-    if (size > N){
-        throw runtime_error("too little particle");
-    }
-    // determine the no. of particles for each rank
-    N_proc = N / size;
-    // determine the starting point of input_loc for each rank
-    *substart = loc + 2 * N_proc * rank;
-    // if at last rank, put the remainder of particles in the last process
-    if (rank == size - 1){
-        N_proc += N % size;
-    }
-}
 
 // constructor for SPH_parallel
-SPH_parallel::SPH_parallel(int N, int rank, int N_proc){
+SPH_parallel::SPH_parallel(int N, int size, int rank){
     // input N and rank
     this -> N = N;
     this -> rank = rank;
-    this -> N_proc = N_proc;
+    info = new DecomposeInfo(N, size);
+    this -> N_proc = info->N_proc[rank];
+    cout << "Process "<< rank << " is working on "<< N_proc << " points" <<endl;
+
     // initialise class parameters, no double pointer is used
     x = new double[N_proc * 2]();          // x has N_proc vectors of 2
     v = new double[N_proc * 2]();          // v has N_proc vectors of 2
@@ -111,7 +88,8 @@ SPH_parallel::SPH_parallel(int N, int rank, int N_proc){
     a = new double[N_proc * 2]();          // a has N vectors of 2
     rho_global = new double[N];            // rho of all N particles
     p_global = new double[N];              // P of all N particles
-    x_global = new double[N * 2];              // x of all N particles
+    x_global = new double[N * 2];          // x of all N particles
+    v_global = new double[N * 2];          // v of all N particles
 }
 
 // destructor for parallel
@@ -135,13 +113,19 @@ SPH_parallel::~SPH_parallel(){
 
 
 // input location
+// every process need to know the location of all particles at start
+// every process only take care of time integration of the particle it need to check
 void SPH_parallel::inputLocation(double * loc){
     // read locations from array loc(col major)
+    double * ptr = loc + 2*info->startloc[rank];
     for(int i = 0; i < N_proc; i++){      
-        x[2*i] = loc[2*i];
-        x[2*i + 1] = loc[2*i + 1]; 
-        cout << x[2*i] << " " << rank << endl;
-        cout << x[2*i + 1] << " " << rank << endl;      
+        x[2*i] = ptr[2*i];
+        x[2*i + 1] = ptr[2*i + 1]; 
+        // cout << x[2*i] << " " << rank << endl;
+        // cout << x[2*i + 1] << " " << rank << endl;      
+    }
+    for (int i = 0; i< 2*N; i++){
+        x_global[i] = loc[i];
     }
 }
 
@@ -167,10 +151,8 @@ void SPH_parallel::calRho(){
     delete [] temp;
 
     // gather all rhos into rho global
-    int recvcounts[3] = {2,2,3};
-    int displs[3] = {0,2,4};
     MPI_Allgatherv(rho, N_proc, MPI_DOUBLE, rho_global, 
-                    recvcounts, displs, MPI_DOUBLE, MPI_COMM_WORLD);
+                    info->recvcounts_scalar, info->displs_scalar, MPI_DOUBLE, MPI_COMM_WORLD);
 
 }
 
@@ -195,42 +177,54 @@ void SPH_parallel::calPre(){
     fill(p_global, p_global + N, -k * rho_0);
     F77NAME(daxpy)(N, k, rho_global, 1, p_global, 1);
 
-    // calculate phi_p
-    // double * ptr = phi_p;
-    // F77NAME(dcopy)(2, r[i*N +j], 1, ptr, 1); // phi_p[i*N + j] = r[i*N +j]
-
-    // calculate F_p
-    // F77NAME(dscal)(2, scale_fac, phi_p[j*N + i], 1);
-    // F77NAME(daxpy)(2, 1.0, phi_p[j*N + i], 1, F_p[i], 1);
+    // calculate phi_p at the required location
+    double * ptr_r;
+    double * ptr_phi_p;
+    for (int i: coordQ){
+        ptr_r = r + 2 * i; // pointer to r at the location of non-zero q
+        ptr_phi_p = phi_p + 2 * i; // pointer to phi_p at the location of non-zero q
+        double scal_fac = (-30/M_PI/pow(h,3)) * pow((1-q[i]),2)/q[i];
+        F77NAME(dcopy)(2, ptr_r, 1, ptr_phi_p, 1);
+        F77NAME(dscal)(2, scal_fac, ptr_phi_p, 1);
+    }
     
+    // calculate F_p
+    double * ptr_Fp;
+    for (int i:coordQ){
+        int col = i / N_proc; // get col no. of the non-zero q
+        int row = i % N_proc; // get row no. of the non-zero q
+        ptr_phi_p = phi_p + 2 * i; // pointer that point to the phi_p calculated
+        ptr_Fp = Fp + row; // pointer that point to the particle
+        double scal_fac =  -(m/rho[col]) * (p[row] + p[col])/2;
+        F77NAME(dscal)(2, scal_fac, ptr_phi_p, 1);
+        F77NAME(daxpy)(2, 1.0, ptr_phi_p, 1, ptr_Fp, 1);
+    }
 }
 
 // calculate Viscous Force
 void SPH_parallel::calVis(){
-    // calculate vij
-    int recvcounts[3] = {4, 4, 6};
-    int displs[3] = {0, 4, 8};
-    double * v_global = new double[N * 2];
-    MPI_Allgatherv(v, N_proc * 2, MPI_DOUBLE, v_global, 
-                    recvcounts, displs, MPI_DOUBLE, MPI_COMM_WORLD);
+    // calculate phi_v at the required non-zero q location
+    for (int i: coordQ){
+        phi_v[i] = (1-q[i]) * 40 / M_PI / pow(h, 4);
+    }
 
+    // calculate F_v
+    double * ptr_v;
+    double * ptr_fv;
+    for (int i: coordQ){
+        int col = i / N_proc; // get col no. of the non-zero q
+        int row = i % N_proc; // get row no. of the non-zero q
+        double scale_fac = -miu * (m/rho[row]) * phi_v[i];
+        double *vij = new double[2];
+        ptr_v = v + 2 * row;
+        F77NAME(dcopy)(2, ptr_v, 1, vij, 1);
+        ptr_v = v_global + 2 * i;
+        F77NAME(daxpy) (2, -1.0, ptr_v, 1, vij, 1);
+        F77NAME(dscal)(2, scale_fac, vij, 1);
+        ptr_fv = Fv + row;
+        F77NAME(daxpy)(2, 1.0, vij, 1,  ptr_fv, 1);
+    }
 
-    // // calculate phi_v
-    // for(int i = 0; i < N; i ++){
-    //     for(int j = 0; j < N; j++ ){
-    //         if (q[i*N + j] < 1 && i !=j ){
-    //             phi_v[i*N + j] = (1 - q[i*N + j]) * 40/M_PI/pow(h, 4);
-    //         }else{
-    //             phi_v[i*N + j] = 0;
-    //         }
-    //     }
-    // }
-
-
-    // // calculate F_v
-    // double scale_fac = -miu * (m/rho_i[j]) * phi_v[i*N + j];
-    // F77NAME(dscal)(2, scale_fac, vij[j*N + i], 1);
-    // F77NAME(daxpy)(2, 1.0, vij[j*N + i], 1, F_v[i], 1);
 }
 
 // calculated gravity force
@@ -243,10 +237,10 @@ void SPH_parallel::calGra(){
 
 void SPH_parallel::timeInte(){
     int t = 1;
-    while(t <= 20){
-        if(t > 1){
-            calRijQ();
-        }
+    while(t <= 200000){
+        
+        calRijQ();
+        
         calRho();
         if(t == 1){
             scaleRecal();
@@ -296,28 +290,29 @@ void SPH_parallel::timeInte(){
                 x[i*2 + 1] = domain[1] - h;
             }
         }
-        cout << "finished " << t <<" rank " << rank <<endl; 
+        // cout << "finished " << t <<" rank " << rank <<endl; 
         t++;
         // send and gather all data of locations
         MPI_Barrier(MPI_COMM_WORLD);
         sendRecvLoc();
+        coordQ.clear();
     }
 
 }
 
 void SPH_parallel::sendRecvLoc(){
 
-    int recvcounts[3] = {4, 4, 6};
-    int displs[3] = {0, 4, 8};
     MPI_Allgatherv(x, N_proc * 2, MPI_DOUBLE, x_global, 
-                    recvcounts, displs, MPI_DOUBLE, MPI_COMM_WORLD);
+                    info->recvcounts_vec, info->displs_vec, MPI_DOUBLE, MPI_COMM_WORLD);
+    MPI_Allgatherv(v, N_proc * 2, MPI_DOUBLE, v_global, 
+                info->recvcounts_vec, info->displs_vec, MPI_DOUBLE, MPI_COMM_WORLD);
     
 }
 
 
 void SPH_parallel::calRijQ(){
-    double * rij = new double[2 * N_proc * N];
-    double * ptr = rij;
+    
+    double * ptr = r;
     double * xgptr = x_global;
     for(int i =0; i < N; i++){
         F77NAME(dcopy)(N_proc * 2, x, 1, ptr, 1);
@@ -325,13 +320,15 @@ void SPH_parallel::calRijQ(){
             F77NAME(daxpy)(2, -1.0, xgptr,1,ptr,1);
             q[i*N_proc + j] = F77NAME(dnrm2)(2, ptr, 1) / h;
             // use a vector to save of coordinate of q
-            if (q[i*N_proc + j] < 1){
+            if (q[i*N_proc + j] < 1 && q[i*N_proc + j]>0){
+                // cout << "Hi " << rank << endl;
                 coordQ.push_back(i*N_proc + j);
             }
             ptr += 2;
         }
         xgptr += 2;      
     }
-
-
+    // if (rank == 2){
+    //     printMatrix(q, N_proc, N);
+    // }
 }

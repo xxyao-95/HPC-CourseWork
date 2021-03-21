@@ -1,4 +1,5 @@
 #include "SPH_parallel.h"
+// #include "datastructure/DataStructure.h"
 #include "mpi.h"
 using namespace std;
 
@@ -33,25 +34,11 @@ int main(int argc, char *argv[])
     }
     // broadcast coordinate of particles
     MPI_Bcast(loc, N*2, MPI_DOUBLE, 0, MPI_COMM_WORLD);
-    // decompose the particles into different SPH process
-    int N_proc;         // particle per porcess
-    double * substart;  // where to start read from loc
-    decompose_particles(N, rank, size, loc, N_proc, &substart);
     // instanciate SPH_parallel class
-    SPH_parallel test1 = SPH_parallel(N, rank, N_proc);
-    cout << "process: " << rank << " initialized " << N_proc << " points" << endl;
+    SPH_parallel SPH = SPH_parallel(N, size, rank);
+    
     // input location for all processes
-    test1.inputLocation(substart);
-
-    // now start the algorithm at the 1st time step
-    // need to calculate rij to determine q which decide whether the particles are colliding
-    // let root calculalte rij
-    // if (rank == 0){
-    //     double * r;
-    //     r = FindPair_brute(loc, N);
-    //     cout << r[2] << endl;
-    //     cout << r[3] << endl;
-    // }
+    SPH.inputLocation(loc);
 
     // test1.calRho();
   
@@ -59,8 +46,9 @@ int main(int argc, char *argv[])
     // test1.calPre();
     // test1.calVis();
     // test1.calGra();
-    test1.timeInte();
+    SPH.timeInte();
     // Finailze MPI
     MPI_Finalize();
+    cout << "finished" << endl;
     return 0;
 }

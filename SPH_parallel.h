@@ -6,12 +6,12 @@ first draft of parallel code
 #include <algorithm>
 #include <fstream>
 #include <vector>
+#include "datastructure/DataStructure.h"
 
 using namespace std;
-double * FindPair_brute(double * x, int N);
+
 // function to decompose particles to all processes
-void decompose_particles(int N, int rank, int size, double * loc, 
-                         int & N_proc, double ** substart);
+void decompose_particles(int N, int size, int * N_proc, int * substart);
 
 class SPH_parallel{
 
@@ -46,12 +46,14 @@ private:
     double * rho_global;       // rho of all processes
     double * p_global;         // p of all processes
     double * x_global;         // x of all processes
-
+    double * v_global;         // v of all processes
+    
+    DecomposeInfo * info;       // hold information of world info
     vector<int> coordQ;         // coordinate of q that is < 1
 
 public:
     // constructor
-    SPH_parallel(int N, int rank, int N_proc);
+    SPH_parallel(int N, int size, int rank);
     // destructor
     ~SPH_parallel();
     // input location
