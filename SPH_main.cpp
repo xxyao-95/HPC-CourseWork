@@ -21,7 +21,7 @@ int main(int argc, char *argv[])
         cout << "root will parse argument" << endl;
         cout << "root will read in loc input" << endl;
         vector<double> locvec;
-        generate_droplet(N,locvec,0.01);
+        generate_droplet(N,locvec,0.025);
         if (size > N){
             throw runtime_error("More process than particle");
         }

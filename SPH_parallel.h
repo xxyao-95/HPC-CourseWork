@@ -27,6 +27,9 @@ private:
     int N;                      // total No. of particles
     int N_proc;                 // No. of particles for 1 process
     double dt = 1E-4;           // time step 
+    double Ek = 0;
+    double Ep = 0;
+    double E_total = 0;
 
 
     double * x;                // cordinate of particles
@@ -75,6 +78,8 @@ public:
     void sendRecvLoc();
     // calculate rij and q
     void calRijQ();
+    // calculate energy
+    void calEnergy();
     // print matrix
     void printMatrix(double * Matrix, int m, int n){
         for(int i = 0; i < n; i++){
