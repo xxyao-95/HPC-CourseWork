@@ -26,6 +26,15 @@ void generate_droplet(int & N, vector<double> & loc, const double & distance){
 
 }
 
+void add_noise(const int & N, vector<double> & loc){
+    srand(time(0));
+    for (int i=0; i<N*2 ; i++){
+        double noise = (double) rand()/(RAND_MAX/2) - 1; // noise is in -1 to 1
+        noise *= 0.01 / 10; // noise is scaled to -h/10 to h/10
+        loc[i] += noise;
+    }
+}
+
 // int main(int argc, char const *argv[])
 // {
 //     int N = 0;

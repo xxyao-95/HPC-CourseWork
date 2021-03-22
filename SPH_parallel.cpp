@@ -133,11 +133,16 @@ void SPH_parallel::inputLocation(double * loc){
 void SPH_parallel::calRho(){
     fill(phi_d, phi_d + (N_proc * N), 0.0);
     // assgin phi_d values at postitions where rij = [0, 0];
-    double * ptr = phi_d + info->startloc[rank];
+    double * ptr = phi_d + info->startloc[rank] * N_proc;
     for(int i=0; i< N_proc; i++){
         *ptr = 4 / M_PI / h / h;
         ptr +=  N_proc + 1;
     }
+
+    // if (rank == 2){
+    //     printMatrix(phi_d, N_proc, N);
+    // }
+
     // calculate phi_d for places where q < 1
     if (!coordQ.empty()){
         for (int i: coordQ){
@@ -152,6 +157,7 @@ void SPH_parallel::calRho(){
     delete [] temp;
     
     // gather all rhos into rho global
+    MPI_Barrier(MPI_COMM_WORLD);
     MPI_Allgatherv(rho, N_proc, MPI_DOUBLE, rho_global, 
                     info->recvcounts_scalar, info->displs_scalar, MPI_DOUBLE, MPI_COMM_WORLD);
 
@@ -179,10 +185,10 @@ void SPH_parallel::calPre(){
     fill(Fp, Fp + (N_proc * 2), 0.0);
     fill(phi_p, phi_p + (N*N_proc*2), 0.0);
     // calculate p
-    fill(p_global, p_global + N, -k * rho_0);
-    F77NAME(daxpy)(N, k, rho_global, 1, p_global, 1);
-    fill(p, p + N_proc, -k * rho_0);
-    F77NAME(daxpy)(N_proc, k, rho, 1, p, 1);
+    fill(p_global, p_global + N, -k * rho_0); //-k * rho_0 -> p_global
+    F77NAME(daxpy)(N, k, rho_global, 1, p_global, 1); // rho_global * k + p_global
+    fill(p, p + N_proc, -k * rho_0); // -k * rho_0 -> p
+    F77NAME(daxpy)(N_proc, k, rho, 1, p, 1); // rho * k + p
 
 
     // calculate phi_p at the required location
@@ -227,7 +233,7 @@ void SPH_parallel::calVis(){
         F77NAME(daxpy) (2, -1.0, ptr_v_global, 1, vij, 1); // vij - vj
         F77NAME(dscal)(2, scale_fac, vij, 1); // vij * scalfactor
         double * ptr_Fv = Fv + (2 * row); // point to the location of F_v that we want to calculate
-        F77NAME(daxpy)(2, 1.0, vij, 1,  ptr_Fv, 1); // Fv += vij * scal_pac
+        F77NAME(daxpy)(2, 1.0, vij, 1,  ptr_Fv, 1); // Fv += vij * scal_fac
     }
     
 }
@@ -244,61 +250,62 @@ void SPH_parallel::timeInte(){
     int t = 1;
     ofstream Fout_loc;
     ofstream Fout_energy;
-    // if (rank == 0){
-    //     Fout_loc.open("output_droplet.txt");
-    //     for (int i=0; i<N; i++){ 
-    //         Fout_loc << setw(15) << "x_x";
-    //         Fout_loc << setw(15) << "x_y";
-    //     }
-    //     Fout_loc << endl;
+    if (rank == 0){
+        Fout_loc.open("output_4_wrong.txt");
+        for (int i=0; i<N; i++){ 
+            Fout_loc << setw(15) << "x_x";
+            Fout_loc << setw(15) << "x_y";
+        }
+        Fout_loc << endl;
 
-    //     for (int i=0; i<N; i++){ 
-    //         Fout_loc << setw(15) << x_global[2*i];
-    //         Fout_loc << setw(15) << x_global[2*i + 1];
-    //     }
-    //     Fout_loc << endl;
-    // }
-
-    if (rank = info->size -1){
-        Fout_energy.open("enery.txt");
-        Fout_energy << setw(15) << "Time Step";
-        Fout_energy << setw(15) << "Kinetic Energy";
-        Fout_energy << setw(15) << "Potential Energy";
-        Fout_energy << setw(15) << "Total Energy";
-        Fout_energy << endl;
+        for (int i=0; i<N; i++){ 
+            Fout_loc << setw(15) << x_global[2*i];
+            Fout_loc << setw(15) << x_global[2*i + 1];
+        }
+        Fout_loc << endl;
     }
 
+    // if (rank = info->size -1){
+    //     Fout_energy.open("enery.txt");
+    //     Fout_energy << setw(15) << "Time Step";
+    //     Fout_energy << setw(15) << "Kinetic Energy";
+    //     Fout_energy << setw(15) << "Potential Energy";
+    //     Fout_energy << setw(15) << "Total Energy";
+    //     Fout_energy << endl;
+    // }
+    MPI_Barrier(MPI_COMM_WORLD);
     while(t <= 200000){
 
         calRijQ();     
         calRho();
         if(t == 1){
             scaleRecal();
-            if (rank = info->size -1){
-                calEnergy();
-                Fout_energy << setw(15) << 0;
-                Fout_energy << setw(15) << Ek;
-                Fout_energy << setw(15) << Ep;
-                Fout_energy << setw(15) << E_total;
-                Fout_energy << endl;
-            }
+            // if (rank = info->size -1){
+            //     calEnergy();
+            //     Fout_energy << setw(15) << 0;
+            //     Fout_energy << setw(15) << Ek;
+            //     Fout_energy << setw(15) << Ep;
+            //     Fout_energy << setw(15) << E_total;
+            //     Fout_energy << endl;
+            // }
         }
 
-        if (!coordQ.empty()){
-            calPre();
-            calVis();
-        }
+        // calculate gravity first
         calGra();
-
+        // copy gravity to a
         F77NAME(dcopy)(2 * N_proc, Fg, 1, a, 1);
+
         if (!coordQ.empty()){
+            calPre(); // calculate pressure force only when needed
+            calVis(); // calculate viscous force only when needed
             F77NAME(daxpy)(2 * N_proc, 1.0, Fv, 1, a, 1);
             F77NAME(daxpy)(2 * N_proc, 1.0, Fp, 1, a, 1);
         }
-        double * ptr = a;
+
+        double * ptr_a = a;
         for(int i = 0; i < N_proc; i++){
-             F77NAME(dscal)(2, 1/rho[i], ptr, 1);
-             ptr += 2;
+             F77NAME(dscal)(2, 1/rho[i], ptr_a, 1);
+             ptr_a += 2;
         }
 
         // time integration step
@@ -334,24 +341,22 @@ void SPH_parallel::timeInte(){
         sendRecvLoc();
 
         // write to file at root process
-        // if (rank == 0 and t % 100 == 0){
-        //     for (int i=0; i<N; i++){ 
-        //         Fout_loc << setw(15) << x_global[2*i];
-        //         Fout_loc << setw(15) << x_global[2*i + 1];
-        //     }
-        //     Fout_loc << endl;
-        // }
-        // collect energy and write to file
-        if (rank == info->size - 1){
-            calEnergy();
-            Fout_energy << setw(15) << t;
-            Fout_energy << setw(15) << Ek;
-            Fout_energy << setw(15) << Ep;
-            Fout_energy << setw(15) << E_total;
-            Fout_energy << endl;  
+        if (rank == 0 and t % 100 == 0){
+            for (int i=0; i<N; i++){ 
+                Fout_loc << setw(15) << x_global[2*i];
+                Fout_loc << setw(15) << x_global[2*i + 1];
+            }
+            Fout_loc << endl;
         }
-
-
+        // collect energy and write to file
+        // if (rank == info->size - 1){
+        //     calEnergy();
+        //     Fout_energy << setw(15) << t;
+        //     Fout_energy << setw(15) << Ek;
+        //     Fout_energy << setw(15) << Ep;
+        //     Fout_energy << setw(15) << E_total;
+        //     Fout_energy << endl;  
+        // }
 
         t++;
         MPI_Barrier(MPI_COMM_WORLD);
@@ -372,20 +377,20 @@ void SPH_parallel::sendRecvLoc(){
 void SPH_parallel::calRijQ(){
     // need to clear the vector for positon of non-zero q at every time step
     coordQ.clear();
+    fill(r, r + (N*N_proc*2), 0.0);
     // use pointers to traverse r and x_global
-    double * ptr = r;
+    double * ptr_r = r;
     double * xgptr = x_global;
     for(int i =0; i < N; i++){ // col of r
-        F77NAME(dcopy)(N_proc * 2, x, 1, ptr, 1); // x -> r
+        F77NAME(dcopy)(N_proc * 2, x, 1, ptr_r, 1); // x -> r
         for (int j = 0; j < N_proc; j++){ // row of r
-            F77NAME(daxpy)(2, -1.0, xgptr,1,ptr,1); // r - x_global
-            q[i*N_proc + j] = F77NAME(dnrm2)(2, ptr, 1) / h; // find norm
+            F77NAME(daxpy)(2, -1.0, xgptr,1,ptr_r,1); // r - x_global
+            q[i*N_proc + j] = F77NAME(dnrm2)(2, ptr_r, 1) / h; // find norm/h
             // use a vector to save of coordinate of q
             if (q[i*N_proc + j] < 1 && q[i*N_proc + j]>0){ // record position on non-zero q
-                // cout << "Hi " << rank << endl;
                 coordQ.push_back(i*N_proc + j);
             }
-            ptr += 2; // increment pointer by 2 to move to next point
+            ptr_r += 2; // increment pointer by 2 to move to next point
         }
         xgptr += 2; // increment pointer by 2 to move to next point     
     }
