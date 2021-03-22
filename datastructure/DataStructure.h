@@ -1,8 +1,13 @@
 /*
-Data structure to hold world information
+Data structure header file to hold decompose information
 and information for receiving communications
+made by xiyao
 */
+
+// header guard
 # pragma once
+
+// class decompose info hold the information for decomposition
 class DecomposeInfo{
 public:
     int N;                      // total number of particles
@@ -18,6 +23,5 @@ public:
     DecomposeInfo(int N, int size);
     // destructor
     ~DecomposeInfo();
-
 };
 

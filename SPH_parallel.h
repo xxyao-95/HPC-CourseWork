@@ -1,17 +1,22 @@
 /*
-first draft of parallel code
+Parallel SPH header file made by xiyao
+this file contains all the function declaration for the 
+SPH_parallel class
 */
+// header guard
 # pragma once
+// includes
 #include <iostream>
-#include <algorithm>
 #include <vector>
+#include <fstream>
+#include <iomanip>
+#include <cmath>
 #include "datastructure/DataStructure.h"
+#include "mpi.h"
 
 using namespace std;
 
-// function to decompose particles to all processes
-void decompose_particles(int N, int size, int * N_proc, int * substart);
-
+// SPH_parallel class
 class SPH_parallel{
 
 private:
@@ -27,9 +32,9 @@ private:
     int N;                      // total No. of particles
     int N_proc;                 // No. of particles for 1 process
     double dt = 1E-4;           // time step 
-    double Ek = 0;
-    double Ep = 0;
-    double E_total = 0;
+    double Ek = 0;              // kinetic energy
+    double Ep = 0;              // potential energy
+    double E_total = 0;         // total energy
 
 
     double * x;                // cordinate of particles

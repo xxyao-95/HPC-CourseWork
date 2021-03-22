@@ -1,9 +1,12 @@
+/*
+Parallel SPH source file made by xiyao
+this file contains all the functions for the 
+SPH_parallel class
+*/
 
+// includes
 #include "SPH_parallel.h"
-#include <cmath>
-#include "mpi.h"
-#include <fstream>
-#include <iomanip>
+
 
 #define F77NAME(x) x##_
 
@@ -119,13 +122,11 @@ void SPH_parallel::inputLocation(double * loc){
     double * ptr = loc + 2*info->startloc[rank];
     for(int i = 0; i < N_proc; i++){      
         x[2*i] = ptr[2*i];
-        x[2*i + 1] = ptr[2*i + 1]; 
-        // cout << x[2*i] << " " << rank << endl;
-        // cout << x[2*i + 1] << " " << rank << endl;      
+        x[2*i + 1] = ptr[2*i + 1];     
     }
+    // save the starting location into x_global
     for (int i = 0; i< 2*N; i++){
         x_global[i] = loc[i];
-        // cout << x_global[i] << " " << rank << endl;
     }
 }
 
@@ -133,15 +134,11 @@ void SPH_parallel::inputLocation(double * loc){
 void SPH_parallel::calRho(){
     fill(phi_d, phi_d + (N_proc * N), 0.0);
     // assgin phi_d values at postitions where rij = [0, 0];
-    double * ptr = phi_d + info->startloc[rank] * N_proc;
+    double * ptr = phi_d + info->startloc[rank] * N_proc; // find the starting location in global phi_d matrix
     for(int i=0; i< N_proc; i++){
-        *ptr = 4 / M_PI / h / h;
-        ptr +=  N_proc + 1;
+        *ptr = 4 / M_PI / h / h; // phi_d = 4*pi/h^2 at i=j
+        ptr +=  N_proc + 1; // increment to the next diagnal element
     }
-
-    // if (rank == 2){
-    //     printMatrix(phi_d, N_proc, N);
-    // }
 
     // calculate phi_d for places where q < 1
     if (!coordQ.empty()){
@@ -157,25 +154,20 @@ void SPH_parallel::calRho(){
     delete [] temp;
     
     // gather all rhos into rho global
-    MPI_Barrier(MPI_COMM_WORLD);
     MPI_Allgatherv(rho, N_proc, MPI_DOUBLE, rho_global, 
-                    info->recvcounts_scalar, info->displs_scalar, MPI_DOUBLE, MPI_COMM_WORLD);
+                   info->recvcounts_scalar, info->displs_scalar, MPI_DOUBLE, MPI_COMM_WORLD);
 
 }
 
 // scale m and recalculate rho
 void SPH_parallel::scaleRecal(){
-
+    // sum all the rhos
     double sum_rho = F77NAME(dasum)(N, rho_global, 1);
+    // scale m
     m = N*rho_0 / sum_rho;
-
-    // scale m and rho
+    // recalculate both global and local rho
     F77NAME(dscal)(N, m, rho_global, 1);
     F77NAME(dscal)(N_proc, m, rho, 1);
-
-    // for(int i = 0; i < N; i++){
-    //     cout << rho_global[i] << " " <<rank << endl;
-    // }
 }
 
 
@@ -193,11 +185,17 @@ void SPH_parallel::calPre(){
 
     // calculate phi_p at the required location
     for (int i: coordQ){
+        // move pointers to the location
         double * ptr_r = r + (2 * i); // pointer to r at the location of non-zero q
         double * ptr_phi_p = phi_p + (2 * i); // pointer to phi_p at the location of non-zero q
+        // calculate a scale factor
         double scal_fac = (-30/M_PI/pow(h,3)) * pow((1-q[i]),2)/q[i];
-        F77NAME(dcopy)(2, ptr_r, 1, ptr_phi_p, 1); // r -> phi_p
-        F77NAME(dscal)(2, scal_fac, ptr_phi_p, 1); // phi_p * scal_fac
+        // r -> phi_p
+        ptr_phi_p[0] = ptr_r[0];
+        ptr_phi_p[1] = ptr_r[1];
+        // phi_p * scal_fac
+        ptr_phi_p[0] *= scal_fac;
+        ptr_phi_p[1] *= scal_fac;
     }
     // calculate F_p
     for (int i:coordQ){
@@ -206,8 +204,12 @@ void SPH_parallel::calPre(){
         double * ptr_phi_p = phi_p + (2 * i); // pointer that points to the phi_p calculated
         double * ptr_Fp = Fp + (2 * row); // pointer that points to the particle
         double scal_fac =  -(m/rho_global[col]) * (p[row] + p_global[col])/2; // scale factor
-        F77NAME(dscal)(2, scal_fac, ptr_phi_p, 1); // phi_p * scal_fac
-        F77NAME(daxpy)(2, 1.0, ptr_phi_p, 1, ptr_Fp, 1); // Fp += phi_p*calfac
+        // phi_p * scal_fac
+        ptr_phi_p[0] *= scal_fac;
+        ptr_phi_p[1] *= scal_fac;
+        // Fp += phi_p*calfac
+        ptr_Fp[0] += ptr_phi_p[0];
+        ptr_Fp[1] += ptr_phi_p[1];
     }
 }
 
@@ -228,12 +230,17 @@ void SPH_parallel::calVis(){
         double scale_fac = -miu * (m/rho_global[col]) * phi_v[i]; // calculate the scale factor -miu *m/rho_i
         double *vij = new double[2](); // create a vector that hold vij for that particular coodinate
         double * ptr_v = v +(2 * row); // pointer that points to vi
-        F77NAME(dcopy)(2, ptr_v, 1, vij, 1); // vi -> vij
         double * ptr_v_global = v_global + (2 * col); // pointer that points to vj
-        F77NAME(daxpy) (2, -1.0, ptr_v_global, 1, vij, 1); // vij - vj
-        F77NAME(dscal)(2, scale_fac, vij, 1); // vij * scalfactor
+        // vij = vi - vj
+        vij[0] = ptr_v[0] - ptr_v_global[0];
+        vij[1] = ptr_v[1] - ptr_v_global[1];
+        // vij * scalfactor
+        vij[0] *= scale_fac;
+        vij[1] *= scale_fac;
         double * ptr_Fv = Fv + (2 * row); // point to the location of F_v that we want to calculate
-        F77NAME(daxpy)(2, 1.0, vij, 1,  ptr_Fv, 1); // Fv += vij * scal_fac
+        // Fv += vij * scal_fac
+        ptr_Fv[0] += vij[0];
+        ptr_Fv[1] += vij[1];
     }
     
 }
@@ -273,7 +280,6 @@ void SPH_parallel::timeInte(){
     //     Fout_energy << setw(15) << "Total Energy";
     //     Fout_energy << endl;
     // }
-    MPI_Barrier(MPI_COMM_WORLD);
     while(t <= 200000){
 
         calRijQ();     
@@ -304,8 +310,10 @@ void SPH_parallel::timeInte(){
 
         double * ptr_a = a;
         for(int i = 0; i < N_proc; i++){
-             F77NAME(dscal)(2, 1/rho[i], ptr_a, 1);
-             ptr_a += 2;
+            // a = F/rho
+            ptr_a[0] /= rho[i];
+            ptr_a[1] /= rho[i];
+            ptr_a += 2;
         }
 
         // time integration step
@@ -337,7 +345,6 @@ void SPH_parallel::timeInte(){
         }
 
         // send and gather all data of locations
-        MPI_Barrier(MPI_COMM_WORLD);
         sendRecvLoc();
 
         // write to file at root process
@@ -359,7 +366,6 @@ void SPH_parallel::timeInte(){
         // }
 
         t++;
-        MPI_Barrier(MPI_COMM_WORLD);
     }
 
 }
@@ -384,8 +390,10 @@ void SPH_parallel::calRijQ(){
     for(int i =0; i < N; i++){ // col of r
         F77NAME(dcopy)(N_proc * 2, x, 1, ptr_r, 1); // x -> r
         for (int j = 0; j < N_proc; j++){ // row of r
-            F77NAME(daxpy)(2, -1.0, xgptr,1,ptr_r,1); // r - x_global
-            q[i*N_proc + j] = F77NAME(dnrm2)(2, ptr_r, 1) / h; // find norm/h
+            // r - x_global
+            ptr_r[0] -= xgptr[0];
+            ptr_r[1] -= xgptr[1];
+            q[i*N_proc + j] = sqrt(ptr_r[0]*ptr_r[0] + ptr_r[1]*ptr_r[1])/h;
             // use a vector to save of coordinate of q
             if (q[i*N_proc + j] < 1 && q[i*N_proc + j]>0){ // record position on non-zero q
                 coordQ.push_back(i*N_proc + j);
@@ -404,9 +412,11 @@ void SPH_parallel::calEnergy(){
     double * ptr_v = v_global;
     double * ptr_x = x_global+1;
     for(int i=0; i<N; i++){
-        double vnorm = F77NAME(dnrm2)(2,ptr_v,1);
-        Ek += 0.5 * m * pow(vnorm,2);
+        // v_sqr = v*v
+        double v_sqr = ptr_v[0]*ptr_v[0] + ptr_v[1]*ptr_v[1];
+        Ek += 0.5 * m * v_sqr;
         Ep += m * g * ptr_x[0];
+        // increment the pointers
         ptr_v += 2;
         ptr_x += 2;
     }

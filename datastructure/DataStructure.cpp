@@ -1,8 +1,15 @@
+/*
+Data structure source file to hold decompose information
+and information for receiving communications
+made by xiyao
+*/
+
+// includes
 #include "DataStructure.h"
 
 // construct based on no. of particles and world size
 DecomposeInfo::DecomposeInfo(int N, int size){
-
+    // initialize parameters
     this->N = N;
     this->size = size;
     N_proc = new int[size]();
@@ -12,6 +19,8 @@ DecomposeInfo::DecomposeInfo(int N, int size){
     recvcounts_vec = new int[size]();   
     displs_vec = new int[size]();      
 
+    // loop though all the process to determine the no. of particle per process
+    // the no. of particles are arranged such that they are evenly distributed
     startloc[0] = 0;
     for(int i=0; i < size; i++){
         N_proc[i] = N / size; // each process hold at least N/size particles
@@ -29,6 +38,7 @@ DecomposeInfo::DecomposeInfo(int N, int size){
     }
 }
 
+// destructor
 DecomposeInfo::~DecomposeInfo(){
     delete[] N_proc;               
     delete[] startloc;                 
