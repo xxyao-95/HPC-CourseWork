@@ -7,7 +7,6 @@ SPH_parallel class
 // includes
 #include "SPH_parallel.h"
 
-
 #define F77NAME(x) x##_
 
 extern "C"{
@@ -73,7 +72,11 @@ SPH_parallel::SPH_parallel(int N, int size, int rank){
     info = new DecomposeInfo(N, size);
     this -> N_proc = info->N_proc[rank];
     cout << "Process "<< rank << " is working on "<< N_proc << " points" <<endl;
-
+    // calculate number of grid
+    // need to make sure the number of grid >= the largest y coordinate of grids 
+    // the grid discretization include the upmost and righmost grid when
+    // 1/h does not give an int 
+    n_grid = (int) ceil((domain[1] -domain[0])/h);
     // initialise class parameters, no double pointer is used
     x = new double[N_proc * 2]();          // x has N_proc vectors of 2
     v = new double[N_proc * 2]();          // v has N_proc vectors of 2
@@ -135,6 +138,8 @@ void SPH_parallel::setPara(double dt, double h, double T){
     this->dt = dt;
     this->h = h;
     this->T = T;
+    // recalculate n_grid value changes
+    n_grid = (int) ceil((domain[1] -domain[0])/h);
 }
 
 // calculate rho
@@ -273,6 +278,7 @@ void SPH_parallel::timeInte(){
         Fout_energy << endl;
     }
 
+
     int timesteps = (int) T/dt;
     while(t <= timesteps){
 
@@ -357,6 +363,7 @@ void SPH_parallel::timeInte(){
     }
 
     Fout_energy.close();
+    // write the final location
     ofstream Fout_loc;
     if (rank == info->size - 1){
         Fout_loc.open("output.txt");
@@ -385,26 +392,51 @@ void SPH_parallel::sendRecvLoc(){
 
 
 void SPH_parallel::calRijQ(){
+    fill(r, r + (N*N_proc*2), 0.0);
+    fill(q, q + (N*N_proc), 0.0);
     // need to clear the vector for positon of non-zero q at every time step
     coordQ.clear();
-    fill(r, r + (N*N_proc*2), 0.0);
-    // use pointers to traverse r and x_global
-    double * ptr_r = r;
-    double * xgptr = x_global;
-    for(int i =0; i < N; i++){ // col of r
-        F77NAME(dcopy)(N_proc * 2, x, 1, ptr_r, 1); // x -> r
-        for (int j = 0; j < N_proc; j++){ // row of r
-            // r - x_global
-            ptr_r[0] -= xgptr[0];
-            ptr_r[1] -= xgptr[1];
-            q[i*N_proc + j] = sqrt(ptr_r[0]*ptr_r[0] + ptr_r[1]*ptr_r[1])/h;
-            // use a vector to save of coordinate of q
-            if (q[i*N_proc + j] < 1 && q[i*N_proc + j]>0){ // record position on non-zero q
-                coordQ.push_back(i*N_proc + j);
+    gridMap.clear();
+    // int n_grid = (int) ceil(1.0/h);
+    putIntoGrid(gridMap, x_global, N, h, n_grid);
+    // pointer to x
+    double * ptr_x = x;
+    for (int j=0; j < N_proc; j++){
+        // for each point, get the grid
+        int grid_x = (int) floor(ptr_x[0] / h);
+        int grid_y = (int) floor(ptr_x[1] / h);
+        int grid_coor = grid_x * n_grid + grid_y;
+        // calculate the global index of j
+        int j_global = info->startloc[rank] + j;
+        // the array for checking the neighbours, there are total 9 grid boxes to check 
+        int check[9] = {grid_coor, grid_coor-1, grid_coor+1, 
+                        grid_coor-n_grid, grid_coor+n_grid, grid_coor-1-n_grid,
+                        grid_coor-1+n_grid, grid_coor+1-n_grid, grid_coor+1+n_grid};
+        // iterate through the grid boxes
+        for(int c: check){
+            // if there is a match
+            if (gridMap.find(c) != gridMap.end()){
+                // iterate through the points in that box
+                for(point p : gridMap[c]){
+                    int i = p.loc; // get the index of particle in global
+                    if (i != j_global){
+                        // calculate rij
+                        double rijx = ptr_x[0] - p.x_loc[0];
+                        double rijy = ptr_x[1] - p.x_loc[1];
+                        r[2*(i*N_proc + j)] = rijx;
+                        r[2*(i*N_proc + j)+1] = rijy;
+                        // calculate q
+                        q[i*N_proc + j] = sqrt(rijx*rijx + rijy*rijy) / h;
+                        if (q[i*N_proc + j]<1 && q[i*N_proc + j]>0){
+                            coordQ.push_back(i*N_proc + j);
+                        }
+                    }
+                    
+                }
             }
-            ptr_r += 2; // increment pointer by 2 to move to next point
         }
-        xgptr += 2; // increment pointer by 2 to move to next point     
+        // increment pointer to x
+        ptr_x += 2;
     }
 }
 

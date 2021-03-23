@@ -21,8 +21,11 @@ gen_case.o: cases/generate_cases.cpp cases/generate_cases.h
 parse.o: parse_argument/parse_argument.cpp parse_argument/parse_argument.h
 	$(CXX) $(CXXFLAGS) -o parse.o -c parse_argument/parse_argument.cpp
 
-$(TARGET): main.o SPH_class.o DataStructure.o gen_case.o parse.o
-	$(CXX) $(CXXFLAGS) -o $(TARGET) main.o SPH_class.o DataStructure.o gen_case.o parse.o $(LIBS)
+algo.o: algorithm/Findneighbour.cpp algorithm/Findneighbour.h
+	$(CXX) $(CXXFLAGS) -o algo.o -c algorithm/Findneighbour.cpp
+
+$(TARGET): main.o SPH_class.o DataStructure.o gen_case.o parse.o algo.o
+	$(CXX) $(CXXFLAGS) -o $(TARGET) main.o SPH_class.o DataStructure.o gen_case.o parse.o algo.o $(LIBS)
 
 
 .PHONY: clean droplet block-drop dam-break 

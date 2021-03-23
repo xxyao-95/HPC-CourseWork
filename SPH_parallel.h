@@ -13,6 +13,7 @@ SPH_parallel class
 #include <cmath>
 #include "datastructure/DataStructure.h"
 #include "mpi.h"
+#include "algorithm/Findneighbour.h"
 
 using namespace std;
 
@@ -36,6 +37,7 @@ private:
     double Ep = 0;              // potential energy
     double E_total = 0;         // total energy
     double T = 2;               // total physical time of the simulation
+    int n_grid;                 // no. of grids in one dimention
 
 
     double * x;                // cordinate of particles
@@ -58,6 +60,7 @@ private:
     
     DecomposeInfo * info;       // hold information of world info
     vector<int> coordQ;         // coordinate of q that is < 1
+    unordered_map <int, vector<point>> gridMap; // use an unordered map to contain the grids
 
 public:
     // constructor
@@ -98,6 +101,7 @@ public:
         }
     }
 };
+
 
 
 
