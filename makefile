@@ -1,7 +1,7 @@
 CXX = mpicxx
-CXXFLAGS = -std=c++11 -Wall -O3
+CXXFLAGS = -std=c++11 -Wall -O3 -g
 LIBS = -lblas -lboost_program_options
-TARGET = SPH_run
+TARGET = SPH
 
 
 default: $(TARGET)
@@ -31,4 +31,4 @@ run: $(TARGET)
 	mpiexec -np 20 ./$(TARGET) --ic-droplet
 
 clean:
-	rm *.o SPH_run
+	rm *.o SPH
