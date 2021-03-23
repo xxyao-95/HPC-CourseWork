@@ -1,7 +1,7 @@
 #include "SPH_parallel.h"
 #include "cases/generate_cases.h"
 #include <cstdlib>
-
+#include "parse_argument/parse_argument.h"
 using namespace std;
 
 int main(int argc, char *argv[]){
@@ -11,24 +11,53 @@ int main(int argc, char *argv[]){
     int rank, size;
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
     MPI_Comm_size(MPI_COMM_WORLD, &size);
+
+    // parameters for input
+    po::options_description opts( "HPC course work, SPH algorithm made by Xiyao Liu");
+    po::variables_map vm;
+
+    // parse argument
+    parse_argument(&argc, &argv, opts, vm);
+    // check for help
+    if (vm.count("help")) {
+        if (rank == 0){
+            cout << "Performs SPH algorithm to model behaviour of  particles" << endl;
+            cout << opts << endl;
+        }
+        MPI_Finalize();
+        return 0;
+    }
+    // This parameter specify which case to run
+    int case_name;
     // create N and loc to receive input parameters from root process
     int  N;         // no. of particles
     double * loc;   // coordinate of particles
     vector<double> locvec; // vector to store input
-    // if rank = 0 (root rank), parse argument
-    if (rank == 0){
-        cout << "root will parse argument" << endl;
-        cout << "root will read in loc input" << endl;
-        // generate the case base on input argument
-        // generate_validation(N, locvec, 0.01);
-        generate_dambreak(N,locvec,0.02);
-        add_noise(N, locvec);
-        if (size > N){
-            throw runtime_error("More process than particle");
-        }
+    // readin some parameters
+    const double dt = vm["dt"].as<double>();
+    const double T = vm["T"].as<double>();
+    const double h = vm["h"].as<double>();
 
+    try{
+        check_argument(vm, case_name);
+        generate_case(case_name, size, N, locvec, h, rank);
+        if (rank == 0){
+            add_noise(N, locvec);
+        }
+    }catch(logic_error & e){
+        if(rank == 0){
+            cout << e.what() << endl;
+        }
+        MPI_Finalize();
+        return 0;
+    }catch(const char* msg){
+        if (rank == 0){
+            cout << msg << endl;
+            cout << "Please ensure no. of process < no. of particles" << endl;
+        }
+        MPI_Finalize();
+        return 0;
     }
-    MPI_Barrier(MPI_COMM_WORLD);
     // broadcast no. of particles
     MPI_Bcast(&N, 1, MPI_INT, 0, MPI_COMM_WORLD);
     // make array for holding input locations
@@ -45,10 +74,12 @@ int main(int argc, char *argv[]){
     SPH_parallel SPH = SPH_parallel(N, size, rank);
     // input location for all processes
     SPH.inputLocation(loc);
+    // set dt T h
+    SPH.setPara(dt, h, T);
     // time integration
     SPH.timeInte();
     // Finailze MPI
+    cout << "Process " << rank <<" finished" << endl;
     MPI_Finalize();
-    cout << "finished" << endl;
     return 0;
 }

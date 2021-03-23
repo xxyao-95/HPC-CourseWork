@@ -35,6 +35,7 @@ private:
     double Ek = 0;              // kinetic energy
     double Ep = 0;              // potential energy
     double E_total = 0;         // total energy
+    double T = 2;               // total physical time of the simulation
 
 
     double * x;                // cordinate of particles
@@ -65,6 +66,8 @@ public:
     ~SPH_parallel();
     // input location
     void inputLocation(double * loc);
+    // set dt h T
+    void setPara(double dt, double h, double T);
     // rho calculation
     void calRho();
     // Pressure Force Calculation

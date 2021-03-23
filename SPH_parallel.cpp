@@ -130,6 +130,13 @@ void SPH_parallel::inputLocation(double * loc){
     }
 }
 
+// set dt h T
+void SPH_parallel::setPara(double dt, double h, double T){
+    this->dt = dt;
+    this->h = h;
+    this->T = T;
+}
+
 // calculate rho
 void SPH_parallel::calRho(){
     fill(phi_d, phi_d + (N_proc * N), 0.0);
@@ -255,45 +262,34 @@ void SPH_parallel::calGra(){
 
 void SPH_parallel::timeInte(){
     int t = 1;
-    ofstream Fout_loc;
     ofstream Fout_energy;
-    if (rank == 0){
-        Fout_loc.open("output_4_wrong.txt");
-        for (int i=0; i<N; i++){ 
-            Fout_loc << setw(15) << "x_x";
-            Fout_loc << setw(15) << "x_y";
-        }
-        Fout_loc << endl;
-
-        for (int i=0; i<N; i++){ 
-            Fout_loc << setw(15) << x_global[2*i];
-            Fout_loc << setw(15) << x_global[2*i + 1];
-        }
-        Fout_loc << endl;
+    // let last process write the output file
+    if (rank == info->size -1){
+        Fout_energy.open("enery.txt");
+        Fout_energy << setw(15) << "Time Step";
+        Fout_energy << setw(15) << "Kinetic Energy";
+        Fout_energy << setw(15) << "Potential Energy";
+        Fout_energy << setw(15) << "Total Energy";
+        Fout_energy << endl;
     }
 
-    // if (rank = info->size -1){
-    //     Fout_energy.open("enery.txt");
-    //     Fout_energy << setw(15) << "Time Step";
-    //     Fout_energy << setw(15) << "Kinetic Energy";
-    //     Fout_energy << setw(15) << "Potential Energy";
-    //     Fout_energy << setw(15) << "Total Energy";
-    //     Fout_energy << endl;
-    // }
-    while(t <= 200000){
+    int timesteps = (int) T/dt;
+    while(t <= timesteps){
 
         calRijQ();     
         calRho();
         if(t == 1){
             scaleRecal();
-            // if (rank = info->size -1){
-            //     calEnergy();
-            //     Fout_energy << setw(15) << 0;
-            //     Fout_energy << setw(15) << Ek;
-            //     Fout_energy << setw(15) << Ep;
-            //     Fout_energy << setw(15) << E_total;
-            //     Fout_energy << endl;
-            // }
+            // write energy at initial time step
+            // let last process do the work
+            if (rank == info->size -1){
+                calEnergy();
+                Fout_energy << setw(15) << 0;
+                Fout_energy << setw(15) << Ek;
+                Fout_energy << setw(15) << Ep;
+                Fout_energy << setw(15) << E_total;
+                Fout_energy << endl;
+            }
         }
 
         // calculate gravity first
@@ -347,25 +343,33 @@ void SPH_parallel::timeInte(){
         // send and gather all data of locations
         sendRecvLoc();
 
-        // write to file at root process
-        if (rank == 0 and t % 100 == 0){
-            for (int i=0; i<N; i++){ 
-                Fout_loc << setw(15) << x_global[2*i];
-                Fout_loc << setw(15) << x_global[2*i + 1];
-            }
+        // collect energy and write to file at each time step
+        if (rank == info->size - 1){
+            calEnergy();
+            Fout_energy << setw(15) << t;
+            Fout_energy << setw(15) << Ek;
+            Fout_energy << setw(15) << Ep;
+            Fout_energy << setw(15) << E_total;
+            Fout_energy << endl;  
+        }
+        // increment time step
+        t++;
+    }
+
+    Fout_energy.close();
+    ofstream Fout_loc;
+    if (rank == info->size - 1){
+        Fout_loc.open("output.txt");
+        Fout_loc << setw(15) << "Particle";
+        Fout_loc << setw(15) << "x";
+        Fout_loc << setw(15) << "y";
+        Fout_loc << endl;
+        for (int i=0; i<N; i++){ 
+            Fout_loc << setw(15) << i+1;
+            Fout_loc << setw(15) << x_global[2*i];
+            Fout_loc << setw(15) << x_global[2*i + 1];
             Fout_loc << endl;
         }
-        // collect energy and write to file
-        // if (rank == info->size - 1){
-        //     calEnergy();
-        //     Fout_energy << setw(15) << t;
-        //     Fout_energy << setw(15) << Ek;
-        //     Fout_energy << setw(15) << Ep;
-        //     Fout_energy << setw(15) << E_total;
-        //     Fout_energy << endl;  
-        // }
-
-        t++;
     }
 
 }
