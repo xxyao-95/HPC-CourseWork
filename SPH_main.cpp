@@ -17,7 +17,16 @@ int main(int argc, char *argv[]){
     po::variables_map vm;
 
     // parse argument
-    parse_argument(&argc, &argv, opts, vm);
+    try{
+        parse_argument(&argc, &argv, opts, vm);
+    }catch (boost::exception_detail::clone_impl<boost::exception_detail::error_info_injector<boost::program_options::unknown_option> > & e){
+        if(rank == 0){
+            cout << e.what() << endl;
+        }
+        MPI_Finalize();
+        return 0;
+    }
+    // parse_argument(&argc, &argv, opts, vm);
     // check for help
     if (vm.count("help")) {
         if (rank == 0){

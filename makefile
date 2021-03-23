@@ -25,10 +25,16 @@ $(TARGET): main.o SPH_class.o DataStructure.o gen_case.o parse.o
 	$(CXX) $(CXXFLAGS) -o $(TARGET) main.o SPH_class.o DataStructure.o gen_case.o parse.o $(LIBS)
 
 
-.PHONY: clean run
+.PHONY: clean droplet block-drop dam-break 
 
-run: $(TARGET) 
-	mpiexec -np 20 ./$(TARGET) --ic-droplet
+droplet: $(TARGET)
+	mpiexec -np 6 ./$(TARGET) --ic-droplet
+
+block-drop: $(TARGET)
+	mpiexec -np 6 ./$(TARGET) --ic-block-drop
+
+dam-break: $(TARGET)
+	mpiexec -np 6 ./$(TARGET) --ic-dam-break
 
 clean:
 	rm *.o SPH
