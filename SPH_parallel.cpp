@@ -272,7 +272,7 @@ void SPH_parallel::timeInte(){
     ofstream Fout_energy;
     // let last process write the output file
     if (rank == info->size -1){
-        Fout_energy.open("enery.txt");
+        Fout_energy.open("energy.txt");
         Fout_energy << setw(15) << "Time Step";
         Fout_energy << setw(15) << "Kinetic Energy";
         Fout_energy << setw(15) << "Potential Energy";
