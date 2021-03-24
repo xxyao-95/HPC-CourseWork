@@ -15,7 +15,7 @@ This file contains the function implementations
 
 // function to generate grid map based on total no. of particles and their coordinates
 void putIntoGrid(unordered_map <int, vector<point>> & res, double * x_global, 
-                int N, double h, const int & n_grid){
+                const int & N, const double & h, const int & n_grid){
     // pointer to x_global
     double * ptr = x_global;
     for(int i=0; i < N; i++){

@@ -9,6 +9,7 @@ SPH_parallel class
 
 #define F77NAME(x) x##_
 
+// BLAS routines
 extern "C"{
     // level 1
     double F77NAME(ddot) (const int & n,
@@ -236,11 +237,11 @@ void SPH_parallel::calVis(){
     }
 
     // calculate F_v
+    double vij[2] = {0,0}; // a vector for vij
     for (int i: coordQ){
         int col = i / N_proc; // get col no. of the non-zero q, the location of p and rho that need to be included in the formula
         int row = i % N_proc; // get row no. of the non-zero q, the particle that we want to calculate force
         double scale_fac = -miu * (m/rho_global[col]) * phi_v[i]; // calculate the scale factor -miu *m/rho_i
-        double *vij = new double[2](); // create a vector that hold vij for that particular coodinate
         double * ptr_v = v +(2 * row); // pointer that points to vi
         double * ptr_v_global = v_global + (2 * col); // pointer that points to vj
         // vij = vi - vj
@@ -265,6 +266,7 @@ void SPH_parallel::calGra(){
 
 }
 
+// Perform time integration
 void SPH_parallel::timeInte(){
     int t = 1;
     ofstream Fout_energy;
@@ -381,6 +383,7 @@ void SPH_parallel::timeInte(){
 
 }
 
+// Function to send and receive x and v
 void SPH_parallel::sendRecvLoc(){
 
     MPI_Allgatherv(x, N_proc * 2, MPI_DOUBLE, x_global, 
@@ -390,11 +393,15 @@ void SPH_parallel::sendRecvLoc(){
     
 }
 
+// Function to calculate rij and q this function implements a proximity seach algorithm by 
+// first discretizing the domian into grids and put all particles inthe grids
+// each particle only need to check for 9 grids and this appraoch is roughly O(n)
 
 void SPH_parallel::calRijQ(){
     fill(r, r + (N*N_proc*2), 0.0);
     fill(q, q + (N*N_proc), 0.0);
-    // need to clear the vector for positon of non-zero q at every time step
+    // clear the vector for positon of non-zero q at every time step
+    // clear gridMap at every time step
     coordQ.clear();
     gridMap.clear();
     // int n_grid = (int) ceil(1.0/h);

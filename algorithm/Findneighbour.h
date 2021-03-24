@@ -1,5 +1,5 @@
 /*
-Efficient way of Finding neighbouring particles made by xiyao
+Function to find neighbouring particles made by xiyao
 
 This algorithm will split the domain into grids of dimention h x h
 each particle is put into the grid then to check for neighbours, 
@@ -12,7 +12,6 @@ This file contains the funtion declairations
 // header guard
 #pragma once
 // includes
-#include <iostream>
 #include <vector>
 #include <unordered_map>
 #include <cmath>
@@ -29,6 +28,6 @@ typedef struct particle_info{
 }point;
 
 // function to generate grid map based on total no. of particles and their coordinates
-void putIntoGrid(unordered_map <int, vector<point>> & res, double * x_global, int N, double h, const int & n_grid);
+void putIntoGrid(unordered_map <int, vector<point>> & res, double * x_global, const int & N, const double & h, const int & n_grid);
 
-// the implementation of this algorithm in inthe calRijQ function in SPH_parallel class
+// the implementation of this algorithm in the calRijQ() function in SPH_parallel class

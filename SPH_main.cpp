@@ -1,3 +1,11 @@
+/*
+HPC Course work made by xiyao liu, 
+this code utilises MPI to 
+perform SPH simulations
+
+*/
+
+// includes
 #include "SPH_parallel.h"
 #include "cases/generate_cases.h"
 #include <cstdlib>

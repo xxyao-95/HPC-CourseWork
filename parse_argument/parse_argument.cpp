@@ -1,8 +1,15 @@
+/*
+This document contains function for parsing
+command line arguments
+made by Xiyao Liu
 
+*/
 
+// includes
 #include "parse_argument.h"
 #include "../cases/generate_cases.h"
 
+// function to parse in argument
 void parse_argument(int * argc, char** argv[], po::options_description & opts,
                     po::variables_map & vm){
     // specify options
@@ -24,6 +31,7 @@ void parse_argument(int * argc, char** argv[], po::options_description & opts,
 
 }
 
+// function to check argument
 void check_argument(po::variables_map & vm, int & case_name){
     if (vm.count("ic-dam-break")) {
         case_name = 5;
@@ -44,7 +52,7 @@ void check_argument(po::variables_map & vm, int & case_name){
     }
 }
 
-
+// funtion to generate case based on input argument
 void generate_case(int case_name, int size, int & N, vector<double> & locvec, const double & h, const int & rank){
     switch (case_name)
     {
@@ -101,6 +109,7 @@ void generate_case(int case_name, int size, int & N, vector<double> & locvec, co
         break;
     }
 
+    // throw an error when size > N
     if (size > N){
         throw "There are more process than input particles !!!!";
     }

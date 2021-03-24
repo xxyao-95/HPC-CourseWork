@@ -1,5 +1,5 @@
 /*
-This funtions contains functions for parsing
+This document contains function declairations for parsing
 command line arguments
 made by Xiyao Liu
 
